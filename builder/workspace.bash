@@ -270,6 +270,11 @@ function get_dependencies {
         export ROS_VERSION=2
     fi
 
+    for file in $(find "$ws/src" -type f -name '*.rosinstall' -o -name 'rosinstall' -o -name '*.repo' -o -name '*.repos'); do
+        echo "$file"
+        install_from_rosinstall "$file" "$ws"/src/
+    done
+
     resolve_depends_overlayers "$ws/src" --overlayers "${wss[@]}" --deps depend build_export_depend exec_depend run_depend >"$ws/DEPENDS" || true
 
     resolve_depends_overlayers "$ws/src" --overlayers "${wss[@]}" --deps depend build_depend build_export_depend | apt_get_install || true
