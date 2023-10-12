@@ -280,13 +280,59 @@ function get_dependencies {
     resolve_depends_overlayers "$ws/src" --overlayers "${wss[@]}" --deps depend build_depend build_export_depend | apt_get_install || true
 }
 
+function setup_ws {
+    IFS='--' read -ra ARGS <<<"$*"
+    for group in "${ARGS[@]}"; do
+        if [ ! -z "$group" ]; then
+            IFS=' ' read -ra eles <<<"$group"
+            v="${eles[0]}"
+            if [[ -n "${eles[@]:1}" ]]; then
+                declare -a "$v"="( $(printf '%q ' "${eles[@]:1}") )"
+            fi
+        fi
+    done
+    unset IFS
+
+    if [ -v "${ros_distro}" ]; then
+        source "/opt/ros/$ros_distro/setup.bash"
+    else
+        source "/opt/ros/$ROS_DISTRO/setup.bash"
+    fi
+
+    if [[ -n "${overlayers[@]}" ]]; then
+        for overlayer in "${overlayers[@]}"; do
+            if [ -f "$overlayer/install/local_setup.bash" ]; then
+                source "$overlayer/install/local_setup.bash"
+            fi
+        done
+    fi
+
+}
+
 function only_build_workspace {
     # require source workspace before
     local ws=$1
     shift
     local ROS_DISTRO=$1
     shift
-    local pkgs="$*"
+
+    IFS='--' read -ra ARGS <<<"$*"
+    for group in "${ARGS[@]}"; do
+        if [ ! -z "$group" ]; then
+            IFS=' ' read -ra eles <<<"$group"
+            v="${eles[0]}"
+            if [[ -n "${eles[@]:1}" ]]; then
+                declare -a "$v"="( $(printf '%q ' "${eles[@]:1}") )"
+            fi
+        fi
+    done
+    unset IFS
+
+    if [[ -n "${overlayers[@]}" ]]; then
+        setup_ws --ros_distro "$ROS_DISTRO" --overlayers "${overlayers[@]}"
+    else
+        setup_ws --ros_distro "$ROS_DISTRO"
+    fi
 
     local ROS_VERSION=0
     if [ "$ROS_DISTRO" = "noetic" ]; then
