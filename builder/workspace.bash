@@ -593,6 +593,76 @@ function install_workspace {
     fi
 }
 
+function find_pyproject_dirs() {
+    # Accept the workspace directory as an argument
+    local workspace="$1"
+    # Array to store directories containing pyproject.toml
+    local pyproject_dirs=()
+
+    # Use find to search for pyproject.toml and store the parent directories
+    while IFS= read -r dir; do
+        pyproject_dirs+=("$dir")
+    done < <(find "$workspace" -type f -name "pyproject.toml" -exec dirname {} \; | sort -u)
+
+    # Return the array
+    echo "${pyproject_dirs[@]}"
+}
+
+function install_poetry() {
+    # Check if poetry is installed
+    if ! command -v poetry &>/dev/null; then
+        echo "Poetry is not installed. Installing poetry..."
+
+        # Check if pip3 is installed
+        if ! command -v pip3 &>/dev/null; then
+            echo "pip3 is not installed. Installing python3-pip..."
+            apt_get_install python3-pip
+
+            # Verify pip3 installation
+            if ! command -v pip3 &>/dev/null; then
+                echo "Failed to install python3-pip. Exiting."
+                exit 1
+            fi
+        fi
+
+        # Install poetry using pip3
+        python3 -m pip install poetry
+
+        # Verify poetry installation
+        if ! command -v poetry &>/dev/null; then
+            echo "Failed to install poetry. Exiting."
+            exit 1
+        else
+            echo "Poetry successfully installed."
+        fi
+    else
+        echo "Poetry is already installed."
+    fi
+}
+
+function poetry_install_in_dirs() {
+    # Accept the workspace directory as an argument
+    local workspace="$1"
+
+    install_poetry
+
+    # Get the directories containing pyproject.toml
+    local pyproject_dirs=($(find_pyproject_dirs "$workspace"))
+
+    # Loop through the directories and run poetry install
+    for dir in "${pyproject_dirs[@]}"; do
+        echo "Running 'poetry install' in directory: $dir"
+        poetry install -C "$dir" --no-interaction
+
+        # Check if the command was successful
+        if [ $? -eq 0 ]; then
+            echo "Successfully installed dependencies in $dir"
+        else
+            echo "Failed to install dependencies in $dir"
+        fi
+    done
+}
+
 function make_ros_entrypoint {
     local ws=$1
     shift
