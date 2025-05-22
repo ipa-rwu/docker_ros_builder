@@ -436,6 +436,7 @@ function build_workspace {
     shift
     local pkgs="$*"
     apt_get_install build-essential
+    update_git_submodules "$ws"
     setup_rosdep
     source "/opt/ros/$ROS_DISTRO/setup.bash"
     # ls "$ws"/src
@@ -638,27 +639,82 @@ function install_poetry() {
     else
         echo "Poetry is already installed."
     fi
+    poetry config virtualenvs.create false
+}
+
+function find_pyproject_dirs() {
+    # Accept the workspace directory and depth as arguments
+    local workspace="$1"
+    local depth="$2"
+    # Array to store directories containing pyproject.toml
+    local pyproject_dirs=()
+
+    # Use find to search for pyproject.toml files within the specified depth
+    while IFS= read -r dir; do
+        pyproject_dirs+=("$dir")
+    done < <(find "$workspace" -maxdepth "$depth" -type f -name "pyproject.toml" -exec dirname {} \; | sort -u)
+
+    # Return the array
+    echo "${pyproject_dirs[@]}"
 }
 
 function poetry_install_in_dirs() {
-    # Accept the workspace directory as an argument
+    # Accept the workspace directory and depth as arguments
     local workspace="$1"
+    local depth="$2"
 
+    # Ensure poetry is installed
     install_poetry
+    poetry config virtualenvs.create false
 
-    # Get the directories containing pyproject.toml
-    local pyproject_dirs=($(find_pyproject_dirs "$workspace"))
+    # Get the directories containing pyproject.toml within the specified depth
+    local pyproject_dirs=($(find_pyproject_dirs "$workspace" "$depth"))
 
     # Loop through the directories and run poetry install
     for dir in "${pyproject_dirs[@]}"; do
         echo "Running 'poetry install' in directory: $dir"
-        poetry install -C "$dir" --no-interaction
+        poetry install -C "$dir" --no-ansi
 
         # Check if the command was successful
         if [ $? -eq 0 ]; then
             echo "Successfully installed dependencies in $dir"
         else
             echo "Failed to install dependencies in $dir"
+        fi
+    done
+}
+
+function update_git_submodules() {
+    # Accept the workspace directory as an argument
+    local workspace="$1"
+
+    # Find all .git directories (indicating git repositories) within the workspace
+    local git_dirs=($(find "$workspace" -type d -name ".git"))
+
+    # Loop through each found .git directory to check for submodules
+    for git_dir in "${git_dirs[@]}"; do
+        # Get the parent directory of .git (the actual git repository folder)
+        local repo_dir=$(dirname "$git_dir")
+        echo "Checking repository: $repo_dir"
+
+        # Change to the git repository directory
+        cd "$repo_dir" || continue
+
+        # Check if there are any submodules configured
+        if git submodule status &>/dev/null; then
+            echo "Updating submodules in: $repo_dir"
+
+            # Update and initialize submodules
+            git submodule update --init --recursive
+
+            # Check if the command was successful
+            if [ $? -eq 0 ]; then
+                echo "Successfully updated and initialized submodules in $repo_dir"
+            else
+                echo "Failed to update and initialize submodules in $repo_dir"
+            fi
+        else
+            echo "No git submodules found in $repo_dir"
         fi
     done
 }
