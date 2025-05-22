@@ -211,7 +211,7 @@ function install_from_rosinstall {
     fi
     # echo "vcs import"
     # cat "$rosinstall_file"
-    vcs import "$location" <"$rosinstall_file"
+    vcs import "$location" --force <"$rosinstall_file"
     rm "$rosinstall_file"
 }
 
