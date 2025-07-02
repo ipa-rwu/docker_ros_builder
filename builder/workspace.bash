@@ -593,6 +593,81 @@ function install_workspace {
     fi
 }
 
+function rosdep_and_build_workspace {
+    local ws=$1
+    shift
+    local pkgs="$*"
+    apt_get_install build-essential
+    setup_rosdep
+    source "/opt/ros/$ROS_DISTRO/setup.bash"
+    # ls "$ws"/src
+
+    resolve_depends "$ws/src" --deptypes depend build_export_depend exec_depend run_depend >"$ws/DEPENDS"
+    resolve_depends "$ws/src" --deptypes depend build_depend build_export_depend | apt_get_install
+
+    # install python deps
+    install_dep_python "$ws/src"
+    echo "CMAKE_ARGS = $CMAKE_ARGS"
+
+    if [[ "$ROS_VERSION" -eq 1 ]]; then
+        local cmd=("/opt/ros/$ROS_DISTRO"/env.sh catkin_make_isolated -C "$ws")
+
+        if [[ -n "${ignore[@]}" ]]; then
+            cmd+=(--ignore-pkg)
+            for pkg in "${ignore[@]}"; do
+                cmd+=("$pkg")
+            done
+        fi
+
+        if [[ -n "${pkgs[@]}" ]]; then
+            cmd+=(--from-pkg)
+            for pkg in "${pkgs[@]}"; do
+                local new_cmd=()
+                new_cmd=${cmd[@]}
+                new_cmd+=("$pkg")
+                new_cmd+=(-DCATKIN_ENABLE_TESTING=0)
+
+                if [[ -n "${CMAKE_ARGS[@]}" ]]; then
+                    for str in "${CMAKE_ARGS[@]}"; do
+                        new_cmd+=("$str")
+                    done
+                fi
+                echo "Build command: ${new_cmd[@]}"
+                ${new_cmd[@]}
+            done
+        fi
+    fi
+
+    if [[ "$ROS_VERSION" -eq 2 ]]; then
+        if ! command -v colcon >/dev/null; then
+            apt_get_install python3-colcon-common-extensions
+        fi
+        local cmd=(colcon build)
+        if [[ -n "${pkgs[@]}" ]]; then
+            if [[ -n "${COLCON_OPTION}" ]]; then
+                cmd+=("${COLCON_OPTION}")
+            else
+                cmd+=(--packages-up-to)
+            fi
+            for pkg in "${pkgs[@]}"; do
+                cmd+=("$pkg")
+            done
+        fi
+
+        cmd+=("--cmake-args")
+        cmd+=("-DBUILD_TESTING=OFF")
+        if [[ -n "${CMAKE_ARGS[@]}" ]]; then
+            for str in "${CMAKE_ARGS[@]}"; do
+                cmd+=("$str")
+            done
+        fi
+
+        echo "Build command: ${cmd[@]}"
+        cd "$ws" && ${cmd[@]}
+    fi
+}
+
+
 function make_ros_entrypoint {
     local ws=$1
     shift
